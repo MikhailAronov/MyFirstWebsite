@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> AnonPF2E_Chat </title>
+    <link rel="icon" type="image/png" href="/resources/images/sword_icon.png">
+    <link rel="stylesheet" href="stylesheet.css">
+</head>
+<body>
+    <!--<script src="cookieGetter.js"></script>-->
+    <h1 id="siteTitle">AnonPF2E_Chat</h1>
+    <header id="siteNavigation">
+        <ul>
+            <li><a href="./homePage.html">Home</a></li>
+            <li><a href="./profilePage.html">Profile</a></li>
+            <li><a href="./chatPage.html">Chat</a></li>
+            <li><a href="./privateChatPage.html">Private Chat</a></li>
+        </ul>
+    </header>
+    <h1> Private chat page</h1>
+    <div id="addselectFriendsField">
+        <input type="text" placeholder="Enter login to add friend" id="profileToAdd">
+        <button id="addFriendBtn">Add Friend</button>
+        <div id="inviteList">
+
+        </div>
+        <div id="friendList">
+
+        </div>
+    </div>
+    <div id="chatWithFriend">
+        <input type="text" placeholder="Enter your message">
+        <button id="sendMessageBtn">Send message</button>
+    </div>
+    <script type="module" src="/privateChatPageScript.js"></script>
+    <script type="module" src="/someManagers.js"></script>
+
+</body>
+</html>
