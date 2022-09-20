@@ -1,1 +1,15 @@
+[WeMetAgain][Tue Sep 20 2022 14:03:54 GMT+0300 (Москва, стандартное время)]: 
+ Some messaghe 
+
+[WeMetAgain][Tue Sep 20 2022 14:04:08 GMT+0300 (Москва, стандартное время)]: 
+ Okay, first result is null 
+
+[WeMetAgain][Tue Sep 20 2022 14:04:14 GMT+0300 (Москва, стандартное время)]: 
+ but then its fine 
+
+[WeMetAgain][Tue Sep 20 2022 14:05:24 GMT+0300 (Москва, стандартное время)]: 
+ Okay, what now? 
+
+[WeMetAgain][Tue Sep 20 2022 14:05:38 GMT+0300 (Москва, стандартное время)]: 
+ excellent, all works fine 
 

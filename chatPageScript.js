@@ -2,17 +2,13 @@
 let sendMessagebutton = document.getElementById('chat_submitMessBtn');
 
 async function correspondUpload() {
-    async function gettingNickAndMessFromServer() {
-        const response = await fetch('/uploadCorrespond', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-                // 'Content-Type': 'application/x-www-form-urlencoded',
-        }});
-        const result = await response.json();
-        return result;
-    }
-    let nickAndMessContainer = await gettingNickAndMessFromServer();
+    const response = await fetch('/uploadCorrespond', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+            // 'Content-Type': 'application/x-www-form-urlencoded',
+    }});
+    let nickAndMessContainer = await response.json();
     //console.log(nickAndMessContainer);
     let packofMess = nickAndMessContainer.messages;
     console.log(packofMess);
@@ -43,10 +39,10 @@ async function setLoginAndEmailToSessionStorage() {
     req.responseType = 'json';
     req.onload = function () {
         let userData = req.response;
-        sessionStorage.setItem('login', userData[0].login);
-        sessionStorage.setItem('email', userData[0].email);
-        console.log('Login ' + userData[0].login + ' had been written to session storage');
-        console.log('Email ' + userData[0].email + ' had been written to session storage');
+        sessionStorage.setItem('login', userData.login);
+        sessionStorage.setItem('email', userData.email);
+        console.log('Login ' + userData.login + ' had been written to session storage');
+        console.log('Email ' + userData.email + ' had been written to session storage');
     }
     req.send();
 }
