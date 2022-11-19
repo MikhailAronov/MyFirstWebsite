@@ -1,3 +1,4 @@
+node_modules
 cookieGetter.js
 galleryPage.html
 test.html
@@ -8,4 +9,4 @@ JWT_ground.js
 jwt_mngr.ts
 PostgreSQL_Manager.ts
 tsconfig.json
-
+README.md

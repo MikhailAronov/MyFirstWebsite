@@ -16,7 +16,7 @@ class Mysql_database_manager {
         this.db = this.mysql.createConnection(connectionParams);
     }
 
-    async createRow(table, columns, values) {
+    async createRows(table, columns, values) {
         try{
             if(columns.toString != '') {
                 columns = '(' + columns + ')';
@@ -46,7 +46,7 @@ class Mysql_database_manager {
         }
     }
 
-    async readRow(table, columns, where) {
+    async readRows(table, columns, where) {
         try {
             if(table === '' || columns === '' || where === '') {
                 console.log('Please, enter table, columns and values (string or array) and where condition (it\'s obligatory)');
@@ -70,7 +70,7 @@ class Mysql_database_manager {
         }
     }
 
-    async updateRow(table, columns, values, where) {
+    async updateRows(table, columns, values, where) {
         try{
             if (table === '' || columns === '' || values === '' || where === '') {
                 console.log('Please, enter table (string or array), object (object) and where condition (it\'s obligatory)');
@@ -105,7 +105,7 @@ class Mysql_database_manager {
         }
     }
     
-    async deleteRow(table, where) {
+    async deleteRows(table, where) {
         try {
             if(table === '' || where === '') {
                 console.log('Please, enter table (string or array) and where condition (it\'s obligatory)');

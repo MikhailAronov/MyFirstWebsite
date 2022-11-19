@@ -5,25 +5,26 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev-migrate": "node migrations/migration.js",
+    "dev": "node index.js"
   },
   "author": "Aronov Mikhail",
   "license": "ISC",
   "dependencies": {
-    "@babel/core": "^7.18.10",
-    "@babel/preset-env": "^7.18.10",
-    "@babel/register": "^7.18.9",
-    "babel": "^6.23.0",
+    "bcrypt": "^5.1.0",
+    "cookie": "^0.5.0",
     "cookie-parser": "^1.4.6",
     "express": "^4.18.1",
     "formidable": "^2.0.1",
     "jsonwebtoken": "^8.5.1",
     "mysql": "^2.18.1",
+    "pg": "^8.8.0",
     "serve-favicon": "^2.5.0",
-    "socket.io": "^4.5.1",
+    "socket.io": "^4.5.3",
     "uuid": "^8.3.2"
   },
   "devDependencies": {
+    "@types/node": "^18.11.8",
     "nodemon": "^2.0.19"
   }
 }

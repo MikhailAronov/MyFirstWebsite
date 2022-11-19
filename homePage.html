@@ -9,15 +9,23 @@
     <title>AnonPF2E_Chat</title>
 </head>
 <body>
-    <h1 id="siteTitle">AnonPF2E_Chat</h1>
-    <div id="siteNavigation">
+    <header id="siteNavigation">
+        <h1 id="siteTitle">AnonPF2E_Chat</h1>
         <ul>
             <li><a href="./homePage.html">Home</a></li>
             <li><a href="./profilePage.html">Profile</a></li>
             <li><a href="./chatPage.html">Chat</a></li>
             <li><a href="./privateChatPage.html">Private Chat</a></li>
+            <li><a id="logOut" onclick="
+            (async () => {
+                await fetch('/logout', {
+                    method : 'GET'
+                });
+                window.location.reload();
+            })();
+            ">Log Out</a></li>
         </ul>
-    </div>
+    </header>
 
 </body>
 </html>

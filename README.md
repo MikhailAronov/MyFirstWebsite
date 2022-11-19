@@ -1,9 +1,9 @@
-# My First Website
-My testing ground for implementing and consolidating new ways of developing that I'm learning. For now this project includes javascript, node.js (and bunch of modules), express, work with MySQL database
-
-Currently implemented client-server interaction by API with express and AJAX\fetch, registration page for account creating, cookie usage to recognize the account by server, server-database interaction to retrieve and write data (the client sends to server only the unique ID stored in the cookie), profile page (with user's avatar), general chat or rather bulletin board where each user can post a message on his behalf (login), express routers, some kind of simple "friends" functionality from social networks and others
+# Chat Website
+Website with private and public chat and full registration functionality
+• REST API with Express framework and AJAX/fetch, MySQL (PostgreSQL in latest version) database for messages and profiles information, registration and authentication handling (JWT with refresh token), Cookie handling, routing with Express, hashing passwords with bcrypt, "friends"functionality, Socket.io real time chat and and etc.
 
 Of course, this site will change and improve in the near future :)
 
 # !!
-(If you want to test this, don't forget to install all "dependencies")
+
+You can easily start and test it by yourself using docker-composer. Just download all files to your directory and start "docker compose up" command

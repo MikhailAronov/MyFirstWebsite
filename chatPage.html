@@ -9,13 +9,23 @@
     <link rel="shortcut icon" href="/resources/images/sword_icon.png">
 </head>
 <body>
-    <h1 id="siteTitle">AnonPF2E_Chat</h1>
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="module" src="/someManagers.js"></script>
     <header id="siteNavigation">
+        <h1 id="siteTitle">AnonPF2E_Chat</h1>
         <ul>
             <li><a href="./homePage.html">Home</a></li>
             <li><a href="./profilePage.html">Profile</a></li>
             <li><a href="./chatPage.html">Chat</a></li>
             <li><a href="./privateChatPage.html">Private Chat</a></li>
+            <li><a id="logOut" onclick="
+            (async () => {
+                await fetch('/logout', {
+                    method : 'GET'
+                });
+                window.location.reload();
+            })();
+            ">Log Out</a></li>
         </ul>
     </header>
     <h1>Public stand with messages</h1>
@@ -30,6 +40,6 @@
             </div>
         </div>
     </section>
-    <script src="chatPageScript.js"></script>
+    <script type="module"  src="chatPageScript.js"></script>
 </body>
 </html>

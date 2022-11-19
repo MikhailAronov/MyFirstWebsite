@@ -1,0 +1,27 @@
+version: "3.8"
+services:
+  app:
+    build: .
+    ports: 
+    - "5000:5000"
+    environment:
+       - POSTGRES_USER=admin
+       - POSTGRES_PASSWORD=1111
+       - POSTGRES_DB=chatwebsite
+       - POSTGRES_HOST=postgresdb
+       - POSTGRES_PORT=5432
+    depends_on:
+      - postgresdb
+  postgresdb:
+    container_name: postgresdb
+    image: postgres:14-alpine
+    ports: 
+      - "5010:5432"
+    volumes:
+      - /var/lib/postgresql/data
+    environment:
+       POSTGRES_USER: admin
+       POSTGRES_PASSWORD: 1111
+       POSTGRES_DB: chatwebsite
+
+

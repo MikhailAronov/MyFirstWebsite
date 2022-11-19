@@ -9,30 +9,41 @@
     <link rel="stylesheet" href="stylesheet.css">
 </head>
 <body>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
     <!--<script src="cookieGetter.js"></script>-->
-    <h1 id="siteTitle">AnonPF2E_Chat</h1>
     <header id="siteNavigation">
+        <h1 id="siteTitle">AnonPF2E_Chat</h1>
         <ul>
             <li><a href="./homePage.html">Home</a></li>
             <li><a href="./profilePage.html">Profile</a></li>
             <li><a href="./chatPage.html">Chat</a></li>
             <li><a href="./privateChatPage.html">Private Chat</a></li>
+            <li><a id="logOut" onclick="
+            (async () => {
+                await fetch('/logout', {
+                    method : 'GET'
+                });
+                window.location.reload();
+            })();
+            ">Log Out</a></li>
         </ul>
     </header>
     <h1> Private chat page</h1>
-    <div id="addselectFriendsField">
-        <input type="text" placeholder="Enter login to add friend" id="profileToAdd">
-        <button id="addFriendBtn">Add Friend</button>
-        <div id="inviteList">
+    <div id="wholePrivateChat">
+        <div id="addselectFriendsField">
+            <input type="text" placeholder="Enter login to add friend" id="profileToAdd">
+            <button id="addFriendBtn">Add Friend</button>
+            <div id="inviteList">
 
-        </div>
-        <div id="friendList">
+            </div>
+            <div id="friendList">
 
+            </div>
         </div>
-    </div>
-    <div id="chatWithFriend">
-        <input type="text" placeholder="Enter your message">
-        <button id="sendMessageBtn">Send message</button>
+        <div id="chatWithFriend">
+            
+        </div>
     </div>
     <script type="module" src="/privateChatPageScript.js"></script>
     <script type="module" src="/someManagers.js"></script>

@@ -2,48 +2,42 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const formidable = require('formidable');
-const mysql = require('mysql');
 const uuid = require('uuid');
 const util = require('util');
 const cookieParser = require('cookie-parser');
 const favicon = require('serve-favicon');
 const bp = require('body-parser');
-const  {  Mysql_database_manager } = require('./mysql_database_manager.js');
+const cookie = require('cookie');
+const bcrypt = require('bcrypt');
+const cors = require('cors');
 
-const db = new Mysql_database_manager;
+const jwt_mngr = require('./jwt_mngr.js').JWT_token_manager;
+const jwt = new jwt_mngr();
 
-
-function setCookie(cname, cvalue, exdays) {
-    let d = new Date;
-    d.setTime(d.getTime() + exdays*1000*60*60*24);
-    let expires = 'expires=' + d.toUTCString();
-    document.cookie = cname + '=' + cvalue + ';'+ expires + ';path=/';
-}
-
-function getCookieValue(cname) {
-    let name = cname + '=';
-    let c_pairs = document.cookie.split(';');
-    for(let i = 0; i < c_pairs.length; i++ ) {
-        let pair = c_pairs[i];
-        if(pair.indexOf(name) == 0) {
-            return pair.substring(name.length);
-        }
-    }
-    return '';
-}
-
-
-module.exports = setCookie;
-module.exports = getCookieValue;
 // Express using
 const app = express();
 
+app.use(cors());
+app.options('*', cors());
+
+//const  {  Mysql_database_manager } = require('./mysql_database_manager.js');
+const {PostgreSQL_db_manager} = require('./PostgreSQL_Manager.js');
+
+//const db = new Mysql_database_manager;
+const db = new PostgreSQL_db_manager();
+
+
+
+const http = require('http').Server(app);
+const io = require('socket.io')(http);
 
 // Favicon serve
 app.use(favicon(path.join(__dirname, 'resources/images/sword_icon.png')));
 
+//PostgreSQL
+db.connectTodb_pool('admin', 'postgresdb', 'chatwebsite', '1111', 5432);
 // Create connection to MySQL
-db.connectToDatabase();
+//db.connectToDatabase();
 /* const db = mysql.createConnection({
     host: '127.0.0.1',
     port: '3306',
@@ -62,6 +56,7 @@ db.connect((err) => {
 app.use(cookieParser());
 
 // Body-parser settings (USE NEW bp.*content-type* FOR EVERY NEW CONTENT-TYPE OR IT WILL NOT WORK)
+app.use(express.json());
 app.use(bp.json());
 app.use(bp.text());
 app.use(bp.urlencoded({ extended: true }));
@@ -72,38 +67,170 @@ app.use('/users', require('./users/users_router'));
 app.use('/resources/images', require('./resources/images/images_router'));
 
 // Check cookie
-app.use((req, res, next) => {
+/* app.use((req, res, next) => {
+    console.log('app.use reached');
     if (req.path == '/regPage.html') {
+        console.log('app.use regPage.html reached');
         return next();
-    } else if(req.path == '/*.html') {
+    } else if((req.path).match(/^\/[\w]+\.html$/)) {
+        console.log('app.use else if reached');
         let userToken = req.cookies.ID;
         if (userToken === undefined) {
-            next();
+            req.url = '/regPage.html';
+            req.method = 'GET';
+            return next();
         } else {
             return next();
         }
     }
-    next();
-}); 
+    return next();
+});  */
+
+async function authCheck (req, res, next) {
+    console.log('f: authCheck req.user : ', req.user);
+    if(req.user === undefined) {
+        console.log('f:authCheck in if(req.user === undefined) reached');
+        //res.status(401).send('You are not authorized!');
+        //res.end();
+        //return false;
+        res.redirect(302, '/regPage.html');
+        res.end();
+        return false;
+    }
+    return true;
+}
+
+async function useridFromAccessToken(req) {
+    let accessToken = req.cookies.Authorization;
+    let payload = JSON.parse(Buffer.from(accessToken.split(' ')[1].split('.')[1], 'base64url').toString('utf8'));
+    let ID = payload.ID;
+    return ID;
+}
+
+function shortDate(mesDate) {
+    return `${mesDate.getFullYear()}\.${mesDate.getMonth() + 1}\.${mesDate.getUTCDate()}  ${mesDate.getHours()}:${mesDate.getMinutes()}:${mesDate.getSeconds()}:${mesDate.getMilliseconds()}`;
+}
+
+
+app.use(async function(req, res, next) {
+    try {
+        //token validation
+        console.log('app.use-req.cookies.Authorization: ', req.cookies.Authorization);
+        if (req.cookies.Authorization) {
+            let accessToken = req.cookies.Authorization;
+            //console.log('app.use-accessToken: ', accessToken);
+            //console.log('app.use-refreshToken: ', refreshToken);
+            let payload = JSON.parse(Buffer.from(accessToken.split(' ')[1].split('.')[1], 'base64url').toString('utf8'));
+            let keys = await db.readRows('keys', 'accesssecret, refreshsecret', `cookieId =\'${payload.ID}\'`);
+            try {
+                if(await jwt.tokenValidation(accessToken, keys[0].accesssecret)) {
+                    let nickQuery = await db.readRows('profiles','login',`cookieId = \'${payload.ID}\'`);
+                    req.user = nickQuery[0].login;
+                    console.log('app.use-req.user : ', req.user);
+                    return next();
+                } else  {
+                    console.log('app.use if(accessToken validation = false) now goes to redirect');
+                    req.originalurl = req.path;
+                    req.originalmethod = req.method;
+                    req.url = '/newAccessTokenByRefresh';
+                    req.method = 'GET';
+                    console.log(req.path);
+                    return next();
+                    //next();
+                }
+            } catch {
+                req.user = undefined;
+                console.log('app.use- try catch block req.user: ', req.user);
+                return next();
+            }
+        } else {
+            console.log('app.use auth else(I mean cookie undefined) triggered!');
+            req.user = undefined;
+            return next();
+        }
+    } 
+    catch {
+        res.status(500).send('OOPS! Something went wrong!');
+        res.end();
+        return next();
+    }
+});
+
+
+const privateChatSocket = io.of('/privateChat');
+const publicChatSocket = io.of('/publicchat');
 
 const hello = 'Hello, console!';
 //app.get('/*', (req,res) =>)
 
-app.get('/', (req, res) => {
-        res.sendFile(path.join(__dirname, "profilePage.html"));
-}); 
+app.get('/newAccessTokenByRefresh', async (req, res, next) => {
+    try {
+        let accessToken = req.cookies.Authorization;
+        let refreshToken = req.cookies.Refresh;
+        let payload = JSON.parse(Buffer.from(accessToken.split(' ')[1].split('.')[1], 'base64url').toString('utf8'));
+        let keys = await db.readRows('keys', 'accesssecret, refreshsecret', `cookieId =\'${payload.ID}\'`);
+        if (await jwt.tokenValidation(refreshToken, keys[0].refreshsecret)) {
+            console.log('app.get /newAccessTokenByRefresh Refresh token is valid!');
+            let accessSecret = (await jwt.newSecret()).toString('base64url');
+            let refreshSecret = (await jwt.newSecret()).toString('base64url');
+            let newAccessToken = await jwt.accessTokenAsync(payload.ID, accessSecret, 1800);
+            let newRefreshToken = await jwt.refreshTokenAsync(refreshSecret);
+            await db.updateRows('keys', '(accesssecret, refreshsecret)', `(\'${accessSecret}\',\'${refreshSecret}\')`, `cookieId =\'${payload.ID}\'`);
+            
+            res.cookie('Authorization', newAccessToken, {httpOnly: true, SameSite: true, maxAge : 999999999});
+            res.cookie('Refresh', newRefreshToken, {httpOnly: true, SameSite: true, maxAge : 999999999});
+            let nickQuery = await db.readRows('profiles','login',`cookieId = \'${payload.ID}\'`);
+            req.user = nickQuery[0].nickname;
+            req.url = req.originalurl;
+            req.method = req.originalmethod;
+            return next();
+        } else {
+            console.log('app.get /newAccessTokenByRefresh Refresh token is invalid!');
+            req.user = undefined;
+            req.url = req.originalurl;
+            req.method = req.originalmethod;
+            next();
+        }
+    } 
+    catch {
+        res.status(500).send('OOPS! Something went wrong! ()');
+        res.end();
+        return next();
+    }
+});
 
-app.get('/homePage.html', (req, res) => {
+app.get('/', (req, res) => {
+    if((req.path).match(/^\/$/)) {
+        console.log("app.get '/' : (req.path).match(/^\/$/) true");
+            if(req.user) {
+            res.sendFile(path.join(__dirname, "profilePage.html"));
+        } else {
+            res.sendFile(path.join(__dirname, 'regPage.html'));
+        }
+    }
+        
+}); 
+app.get('/homePage.html', async (req, res) => {
     res.sendFile(path.join(__dirname, 'homePage.html'));
     console.log('HomePage visited...');
 });
 
-app.get('/regPage.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'regPage.html'));
-    console.log('regPage.html was sent...');
+app.get('/regPage.html', (req, res, next) => {
+    if(req.user) {
+        console.log("app.get '/regPage.html' started and req.user true");
+        res.sendFile(path.join(__dirname, "profilePage.html"));
+        res.end();
+    } else {
+        res.sendFile(path.join(__dirname, 'regPage.html'));
+        console.log('regPage.html was sent...');
+        res.end();
+        return next();
+    }
+    
 });
 
-app.get('/privateChatPage.html', (req, res) => {
+app.get('/privateChatPage.html', async (req, res, next) => {
+    if (await authCheck (req, res, next) === false) return next();
     res.sendFile(path.join(__dirname, 'privateChatPage.html'));
     console.log('privateChatPage was sent...');
 });
@@ -125,17 +252,17 @@ app.get('/privateChatPageScript.js', (req, res) => {
 app.get('/someManagers.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'someManagers.js'));
 });
-app.get('/profilePage.html', (req, res) => {
+app.get('/socket.io/socket.io.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'node_modules/socket.io/client-dist/socket.io.js'));
+});
+app.get('/profilePage.html', async (req, res, next) => {
+    if (await authCheck (req, res, next) === false) return next();
+    console.log('app.get /profilePage.html prodile page was sent...');
     res.sendFile(path.join(__dirname, "profilePage.html"));
 });
-app.get('/chatPage.html', (req, res) => {
-    console.log(req.cookies.ID);
-    if(req.cookies.ID === undefined) {
-        res.sendFile(path.join(__dirname, "regPage.html"));
-        console.log('Hello');
-    } else {
-        res.sendFile(path.join(__dirname, "chatPage.html"));
-    }
+app.get('/chatPage.html', async (req, res, next) => {
+    if (await authCheck (req, res, next) === false) return next();
+    res.sendFile(path.join(__dirname, "chatPage.html"));
 });
 app.get('/stylesheet.css', (req, res) => {
     res.sendFile(path.join(__dirname, "stylesheet.css"));
@@ -147,20 +274,19 @@ app.get('/demon', (req,res) => {
     res.send('Request getting succesful...');
 });
 app.get('/friendsList', async (req, res) => {
-    let userCookieId = req.cookies.ID;
-    /* let sql = `SELECT sourceId AS id FROM friendship WHERE status= \'active\' AND targetId = \'${userCookieId}\'; SELECT targetId AS id FROM friendship WHERE status= \'active\' AND sourceId = \'${userCookieId}\';`;
-    let promiseOfIdsList = new Promise((resolve, reject) => {
-        db.query(sql, (err, result) => {
-            if(err) throw err;
-            let fullArrayOfFriends = [].concat(...result);
-            let setForFriendsIds = new Set;
-            for(let k in fullArrayOfFriends) {
-                setForFriendsIds.add('\'' + fullArrayOfFriends[k].id + '\'');
-            }
-            resolve(setForFriendsIds);
-        })
-    }); */
-    let fullArrayOfFriends = [].concat(...await db.customQuery(`SELECT sourceId AS id FROM friendship WHERE status= \'active\' AND targetId = \'${userCookieId}\'; SELECT targetId AS id FROM friendship WHERE status= \'active\' AND sourceId = \'${userCookieId}\';`));
+    let userCookieId = await useridFromAccessToken(req);
+    console.log('app.get /friendsList userCookieId : ', userCookieId);
+    /* let fullArrayOfFriends = [].concat(...await db.customQuery(`
+    BEGIN;
+    SELECT sourceId AS id FROM friendship WHERE status= \'active\' AND targetId = \'${userCookieId}\'; 
+    SELECT targetId AS id FROM friendship WHERE status= \'active\' AND sourceId = \'${userCookieId}\';
+    COMMIT;`)); */
+    let fullArrayOfFriends = [].concat(...await db.customQuery(`
+    SELECT sourceId AS id FROM friendship WHERE status= \'active\' AND targetId = \'${userCookieId}\'
+    UNION
+    SELECT targetId AS id FROM friendship WHERE status= \'active\' AND sourceId = \'${userCookieId}\';`));
+    
+    //await db.queryQuery(`SELECT id FROM (SELECT sourceId AS id FROM friendship JOIN (SELECT targetId AS sourceId FROM friendship WHERE status= \'active\' AND sourceId = \'${userCookieId}\') AS target WHERE status= \'active\' AND targetId = \'${userCookieId}\') AS friends WHERE TRUE;`);
     console.log('fullArrayOfFriends = [].concat(await db.customQuery : ', fullArrayOfFriends);
     let fullSetFriendsIds = new Set;
     for(let k in fullArrayOfFriends) {
@@ -169,33 +295,17 @@ app.get('/friendsList', async (req, res) => {
     let inviteIdsToSql = Array.from(fullSetFriendsIds).join(', ');
     console.log('fullSetOfFriendsIds = ', fullSetFriendsIds);
     if (fullSetFriendsIds.size != 0) {
-        /* let sql_friendsLoginAndEmail = `SELECT login, email FROM profiles WHERE cookieId IN (${inviteIdsToSql});`;
-        db.query(sql_friendsLoginAndEmail, (err,result) => {
-            if(err) throw err;
-            res.send(JSON.stringify(result));
-        }); */
-        res.send(JSON.stringify(await db.readRow('profiles', 'login, email', `cookieId IN (${inviteIdsToSql})`)));
+        res.send(JSON.stringify(await db.readRows('profiles', 'cookieId, login, email', `cookieId IN (${inviteIdsToSql})`)));
     } else {
+        console.log('app.get /friendsList Empty list!');
         let emptyList = {};
         res.send(JSON.stringify(emptyList));
     }
 });
 app.get('/invitesList', async (req, res) => {
-    let userCookieId = req.cookies.ID;
-    /* let sql = `SELECT sourceId AS id FROM friendship WHERE status= \'new\' AND targetId = \'${userCookieId}\'; SELECT targetId AS id FROM friendship WHERE status= \'new\' AND sourceId = \'${userCookieId}\';`;
-    let promiseOfIdsList = new Promise((resolve, reject) => {
-        db.query(sql, (err, result) => {
-            if(err) throw err;
-            let fullArrayOfFriends = [].concat(...result);
-            let setForFriendsIds = new Set;
-            for(let k in fullArrayOfFriends) {
-                setForFriendsIds.add('\'' + fullArrayOfFriends[k].id + '\'');
-            }
-            resolve(setForFriendsIds);
-        })
-    });
-    let fullSetFriendsIds = await promiseOfIdsList.then((readySet) => {return readySet}); */
-    let fullArrayOfFriends = [].concat(...await db.readRow('friendship','sourceId AS id',`status= \'new\' AND targetId = \'${userCookieId}\'`));
+    let userCookieId = await useridFromAccessToken(req);
+    console.log('app.get /inviteList userCookieId : ', userCookieId);
+    let fullArrayOfFriends = [].concat(...await db.readRows('friendship','sourceId AS id',`status= \'new\' AND targetId = \'${userCookieId}\'`));
     let fullSetFriendsIds = new Set;
     for(let k in fullArrayOfFriends) {
         fullSetFriendsIds.add('\'' + fullArrayOfFriends[k].id + '\'');
@@ -203,88 +313,114 @@ app.get('/invitesList', async (req, res) => {
     let inviteIdsToSql = Array.from(fullSetFriendsIds).join(', ');
     console.log(inviteIdsToSql);
     if (fullSetFriendsIds.size != 0) {
-        /* let sql_friendsLoginAndEmail = `SELECT login, email FROM profiles WHERE cookieId IN (${inviteIdsToSql});`;
-        db.query(sql_friendsLoginAndEmail, (err,result) => {
-            if(err) throw err;
-            console.log(result);
-            res.send(JSON.stringify(result));
-        }); */
-        res.send(JSON.stringify(await db.readRow('profiles', 'login, email', `cookieId IN (${inviteIdsToSql})`)));
+        res.send(JSON.stringify(await db.readRows('profiles', 'login, email', `cookieId IN (${inviteIdsToSql})`)));
     } else {
+        console.log('app.get /friendsList Empty list!');
         let emptyList = {};
         res.send(JSON.stringify(emptyList));
     }
 });
+app.get('/logout', async (req, res) => {
+    res.clearCookie("Authorization");
+    res.clearCookie("Refresh");
+    res.redirect(302, '/regPage.html');
+    res.end();
+});
+
+app.post('/login', async (req, res) => {
+    let userData = await db.readRows('profiles', 'cookieId, password', `(login = \'${req.body.login}\' OR email = \'${req.body.login}\')`);
+    console.log('app.post /login STARTED!');
+    console.log('app.post /login userData : ', userData);
+    if(userData[0] === undefined) {
+        res.send('wrong_login');
+        res.end();
+    } else if(await bcrypt.compare(req.body.password, userData[0].password)) {
+        let accessSecret = (await jwt.newSecret()).toString('base64url');
+        let refreshSecret = (await jwt.newSecret()).toString('base64url');
+        let newAccessToken = await jwt.accessTokenAsync(userData[0].cookieid, accessSecret, 1800);
+        let newRefreshToken = await jwt.refreshTokenAsync(refreshSecret);
+        
+        console.log('app.post /login Authorization token : ', newAccessToken);
+        console.log('app.post /login Refresh token : ', newRefreshToken);
+        await db.customQuery(`
+        BEGIN;
+        INSERT INTO keys (cookieId, accesssecret, refreshsecret) VALUES (\'${userData[0].cookieid}\', \'${accessSecret}\',\'${refreshSecret}\')
+        ON CONFLICT ON CONSTRAINT uniq_cookieId  DO
+        UPDATE SET (accesssecret, refreshsecret) = (\'${accessSecret}\',\'${refreshSecret}\') WHERE keys.cookieId = \'${userData[0].cookieid}\';
+        END;
+        `);
+        res.clearCookie('Authorization');
+        res.clearCookie('Refresh');
+        res.cookie('Authorization', newAccessToken, {httpOnly: true, SameSite: true, maxAge : 999999999});
+        res.cookie('Refresh', newRefreshToken, {httpOnly: true, SameSite: true, maxAge : 999999999});
+        res.redirect(302, '/profilePage.html');
+        res.end();
+    } else {
+        console.log('app.post /login sending \"wrong_password\"');
+        res.send('wrong_password');
+        res.end();
+    };
+});
 
 app.post('/uploadCorrespond', async (req, res) => {
-    //const fsreadFile = util.promisify(fs.readFile);
-    let cookieId = req.cookies.ID;
-    /* let sql = `SELECT login FROM profiles WHERE cookieId = \'${cookieId}\';`;
-    db.query(sql, async function (err, result) {
-        if(err) throw err;
-        fs.readFile(path.join(__dirname, 'public', 'PublicChat.txt'), 'utf8', (err, data) => {
-                if (err) throw err;
-                let packtoSend = {
-                    login: result[0].login,
-                    messages: data
-                }
-                console.log(JSON.stringify(packtoSend));
-                res.send(JSON.stringify(packtoSend));
-            }
-        );
-        
-    }); */
-    let userlogin = await db.readRow('profiles', 'login', `cookieId = \'${cookieId}\'`);
-    fs.readFile(path.join(__dirname, 'public', 'PublicChat.txt'), 'utf8', (err, data) => {
-        if (err) throw err;
-        let packtoSend = {
-            login: userlogin[0].login,
-            messages: data
-        }
-        res.send(JSON.stringify(packtoSend));        
-    });
+    console.log(await db.customQuery(`SELECT profiles.login, publicchat.creator, publicchat.id AS id, publicchat.message, publicchat.createdAt FROM publicchat LEFT JOIN profiles ON publicchat.creator = profiles.cookieId;`));
+    res.send(JSON.stringify(await db.customQuery(`SELECT profiles.login, publicchat.creator, publicchat.id AS id, publicchat.message, publicchat.createdAt FROM publicchat LEFT JOIN profiles ON publicchat.creator = profiles.cookieId;`)));
 
 });
+app.post('/uploadFriendCorrespond', async (req, res) => {
+    console.log('app POST /uploadFriendCorrespond invoked!');
+    let cookieId = await useridFromAccessToken(req);
+    console.log(await db.customQuery(`
+    SELECT creatorLogins.clogin AS creator, receiverLogins.rlogin AS receiver, privatechat.id AS id, message, createdAt
+    FROM privatechat
+    INNER JOIN (SELECT DISTINCT profiles.login AS clogin, privatechat.creator AS cookieId
+        FROM profiles
+        INNER JOIN privatechat
+        ON profiles.cookieId = privatechat.creator) AS creatorLogins
+    ON privatechat.creator = creatorLogins.cookieId
+    INNER JOIN (SELECT DISTINCT profiles.login AS rlogin, privatechat.receiver AS cookieId
+        FROM profiles
+        INNER JOIN privatechat
+        ON profiles.cookieId = privatechat.receiver) AS receiverLogins
+    ON privatechat.receiver = receiverLogins.cookieId
+    WHERE (creator = \'${cookieId}\' AND receiver = (SELECT cookieId FROM profiles WHERE login = \'${req.body.login}\')) 
+    OR (creator = (SELECT cookieId FROM profiles WHERE login = \'${req.body.login}\') AND receiver = \'${cookieId}\')
+    ORDER BY createdAt ASC;`));
+    res.send(JSON.stringify(await db.customQuery(`
+    SELECT creatorLogins.clogin AS creator, receiverLogins.rlogin AS receiver, privatechat.id AS id, message, createdAt
+    FROM privatechat
+    INNER JOIN (SELECT DISTINCT profiles.login AS clogin, privatechat.creator AS cookieId
+        FROM profiles
+        INNER JOIN privatechat
+        ON profiles.cookieId = privatechat.creator) AS creatorLogins
+    ON privatechat.creator = creatorLogins.cookieId
+    INNER JOIN (SELECT DISTINCT profiles.login AS rlogin, privatechat.receiver AS cookieId
+        FROM profiles
+        INNER JOIN privatechat
+        ON profiles.cookieId = privatechat.receiver) AS receiverLogins
+    ON privatechat.receiver = receiverLogins.cookieId
+    WHERE (creator = \'${cookieId}\' AND receiver = (SELECT cookieId FROM profiles WHERE login = \'${req.body.login}\')) 
+    OR (creator = (SELECT cookieId FROM profiles WHERE login = \'${req.body.login}\') AND receiver = \'${cookieId}\')
+    ORDER BY createdAt ASC;`)));
+    res.end();
+});
 app.post('/getLoginAndEmailFromCookies', async (req, res) => {
-    let cookieId = req.cookies.ID;
-    /* let sql = `SELECT login, email FROM profiles WHERE cookieId = \'${cookieId}\';`;
-    db.query(sql, (err, result) => {
-        if(err) throw err;
-        console.log(JSON.stringify(result));
-        res.send(JSON.stringify(result));
-    }); */
-    let userData = await db.readRow('profiles', 'login, email', `cookieId = \'${cookieId}\'`);
+    let cookieId = await useridFromAccessToken(req);
+    let userData = await db.readRows('profiles', 'login, email', `cookieId = \'${cookieId}\'`);
     res.send(JSON.stringify(userData[0]));
 });
 app.post('/chat_sendingMessage', async (req, res) => {
-    let cookieId = req.cookies.ID;
+    let cookieId = await useridFromAccessToken(req);
     let mes = req.body;
     let mesDate = new Date();
-    /* let sql = `SELECT login FROM profiles WHERE cookieId = \'${cookieId}\';`;
-    db.query(sql, (err, result) => {
-        if(err) throw err;
-        let writtingMessage = `[${result[0].login}][${mesDate}]: \n ${mes} \n\n`;
-        fs.appendFile(path.join(__dirname, 'public/publicChat.txt'), writtingMessage, (err) => {
-            if(err) throw err;
-        });
-    }); */
-    let userLogin = await db.readRow('profiles', 'login', `cookieId = \'${cookieId}\'`);
-    let writtingMessage = `[${userLogin[0].login}][${mesDate}]: \n ${mes} \n\n`;
-    fs.appendFile(path.join(__dirname, 'public/publicChat.txt'), writtingMessage, (err) => {
-        if(err) throw err;
-        res.send(mes);
-        res.end();
-    });
+    res.send(mes);
+    res.end();
+    let date = shortDate(mesDate);
+    await db.createRows('publicchat', '(creator, message, createdAt, updatedAt)', `(\'${cookieId}\', \'${mes}\', \'${date}\', \'${date}\')`);
 });
 app.post('/getUserDataByCookieID/:ID', async (req, res) => {
     let cookieId = req.params.ID.toString();
-    /* let sql = `SELECT login, email, profPicExt FROM profiles WHERE cookieId = \'${cookieId}\';`;
-    db.query(sql, (err, results) => {
-        if(err) throw err;
-        console.log(JSON.stringify(results));
-        res.send(JSON.stringify(results));
-    }); */
-    let userData = await db.readRow('profiles', 'login, email, profPicExt', `cookieId = \'${cookieId}\'`);
+    let userData = await db.readRows('profiles', 'login, email, profPicExt', `cookieId = \'${cookieId}\'`);
     //res.send(userData);
     console.log(JSON.stringify(userData));
     res.send(JSON.stringify(userData));
@@ -292,29 +428,19 @@ app.post('/getUserDataByCookieID/:ID', async (req, res) => {
     console.log('cookieId value from index.js ' + cookieId);
 });
 app.post('/uploadUserAvatarImage', async (req, res) => {
-    let cookieId = req.cookies.ID;
+    let cookieId = await useridFromAccessToken(req);
     //console.log(cookieId);
-    let userData = await db.readRow('profiles', 'login, profPicExt', `cookieId = \'${cookieId}\'`);
-    //console.log(userData);
-    res.sendFile(path.join(__dirname, 'users', `${userData[0].login}`, `${userData[0].login}_profilePic.${userData[0].profPicExt}`));
+    let userData = await db.readRows('profiles', 'login, profPicExt', `cookieId = \'${cookieId}\'`);
+    console.log(userData);
+    res.sendFile(path.join(__dirname, 'users', `${userData[0].login}`, `${userData[0].login}_profilePic.${userData[0].profpicext}`));
     console.log('Profile\'s avatar image was sent...');
 })
 app.post('/addNewFriend', async (req, res) => {
     console.log('The request has reached the server (endpoint \"addNewFriend\")');
-    let cookieId = req.cookies.ID;
-    /* let userNicknamePromise = new Promise ((res, rej) => {
-        let sql = `SELECT login, email FROM profiles WHERE cookieId = \'${cookieId}\';`;
-        db.query(sql, (err, result) => {
-            if (err) throw err;
-            res(result[0].login);
-        });
-    }).then((value) => {
-        return value;
-    }); 
-    let userNickname = await userNicknamePromise;*/
+    let cookieId = await useridFromAccessToken(req);
 
-    let userNickname = await db.readRow('profiles','login, email',`cookieId = \'${cookieId}\'`);
-    let profileToAdd = await db.readRow('profiles', 'login, email, cookieId', `login = \'${req.body.profileToAdd}\'`);
+    let userNickname = await db.readRows('profiles','login, email',`cookieId = \'${cookieId}\'`);
+    let profileToAdd = await db.readRows('profiles', 'login, email, cookieId', `login = \'${req.body.profileToAdd}\'`);
     if (profileToAdd[0] === undefined) {
         console.log('Not found login to add condition triggered...');
         let profileNotFound = {
@@ -328,45 +454,13 @@ app.post('/addNewFriend', async (req, res) => {
             fromUser: userNickname
         }
         console.log(JSON.stringify(newFriendObject));
-        await db.createRow('friendship', 'sourceId, targetId, status, createdAt, lastUpdatedAt', `\'${cookieId}\', \'${profileToAdd[0].cookieId}\', 'new', \'${new Date()}\', \'${new Date()}\'`);
+        await db.createRows('friendship', '(sourceId, targetId, status, createdAt, updatedAt)', `(\'${cookieId}\', \'${profileToAdd[0].cookieid}\', 'new', \'${shortDate(new Date())}\', \'${shortDate(new Date())}\')`);
         console.log('New friendship added...');
         res.send(JSON.stringify(newFriendObject));
     }
-
-
-    /* async function addNewFriend(userNickname) {
-        
-
-        let sql = `SELECT login, email, cookieId FROM profiles WHERE login = \'${req.body.profileToAdd}\';`;
-        db.query(sql, (err, result) => {
-            if (err) throw err;
-            if (result[0] === undefined){
-                console.log('Not found login to add condition triggered...');
-                let profileNotFound = {
-                    profileNotFound: 'profileNotFound'
-                }
-                res.send(JSON.stringify(profileNotFound));
-            } else {
-                let newFriendObject = {
-                    login: result[0].login,
-                    email: result[0].email,
-                    fromUser: userNickname
-                }
-                console.log(JSON.stringify(newFriendObject));
-                let sql_newFriendship = `INSERT INTO friendship (sourceId, targetId, status, createdAt, lastUpdatedAt) VALUES (${cookieId}, \'${result[0].cookieId}\', 'new', \'${new Date()}\', \'${new Date()}\');`;
-                db.query(sql_newFriendship, (err, result) => {
-                    if (err) throw err;
-                    console.log('New friendship added...');
-                    res.send(JSON.stringify(newFriendObject));
-                });
-            }
-        });
-    }
-    addNewFriend(); */
-
 });
 app.post('/regPage.html', (req, res) => {
-    var form = new formidable.IncomingForm({
+    let form = new formidable.IncomingForm({
         uploadDir: __dirname + '/uploads',
         keepExtensions : true,
         maxFileSize : 10*1024*1024,
@@ -405,26 +499,33 @@ app.post('/regPage.html', (req, res) => {
             }
             let cookieId = await cookieIdInit();
             async function writingDataToDatabase(cookieId) {
-                let IdChecking = await db.readRow('profiles', 'cookieId', `cookieId=\'${cookieId}\'`);
+                let IdChecking = await db.readRows('profiles', 'cookieId', `cookieId=\'${cookieId}\'`);
                 if(IdChecking[0] === undefined) {
                     console.log('No such CookieId in database!... CookieId: ', cookieId, ' will be sign!');
+                    let hashSalt = await bcrypt.genSalt(10);
                     const profileObjForMysql = {
                         login : '\'' + fields.login + '\'',
                         email : '\'' + fields.email + '\'',
-                        password : '\'' + fields.password + '\'',
+                        password : '\'' + await bcrypt.hash(fields.password, hashSalt) + '\'',
                         cookieId : '\'' + cookieId + '\'',
                         profPicExt : '\'' + files.profilePic.originalFilename.split('.').pop() + '\''
                     }
 
-                    await db.createRow('profiles', `${Object.keys(profileObjForMysql)}`, `${Object.values(profileObjForMysql)}`);
+                    await db.createRows('profiles', `(${Object.keys(profileObjForMysql)})`, `(${Object.values(profileObjForMysql)})`);
                     return;                    
                 } else {
                     cookieId = uuid.v4();
                     return writingDataToDatabase(cookieId);
                 }
             }
-
-            res.cookie('ID', cookieId, {httpOnly: false, maxAge : 999999999});
+            let accessSecret = (await jwt.newSecret()).toString('base64url');
+            let refreshSecret = (await jwt.newSecret()).toString('base64url');
+            let newAccessToken = await jwt.accessTokenAsync(cookieId, accessSecret, 1800);
+            let newRefreshToken = await jwt.refreshTokenAsync(refreshSecret);
+            await db.createRows('keys', '(cookieId, accesssecret, refreshsecret)', `(\'${cookieId}\', \'${accessSecret}\',\'${refreshSecret}\')`);
+            
+            res.cookie('Authorization', newAccessToken, {httpOnly: true, SameSite: true, maxAge : 999999999});
+            res.cookie('Refresh', newRefreshToken, {httpOnly: true, SameSite: true, maxAge : 999999999});
 
             
             await writingDataToFolders();
@@ -434,75 +535,127 @@ app.post('/regPage.html', (req, res) => {
             res.redirect(301, '/profilePage.html');            
     });
 });
+app.post('/sendFriendMessage', async (req, res) => {
+    let cookieId = await useridFromAccessToken(req);
+    let date = shortDate(new Date());
+    let mesId = await db.customQuery(`
+    INSERT INTO privatechat (creator, receiver, message, createdAt, updatedAt) VALUES (\'${cookieId}\', (SELECT cookieId FROM profiles WHERE login = \'${req.body.user.login}\'), \'${req.body.message}\', \'${date}\', \'${date}\') RETURNING id;
+    `);
+    let creator = await db.customQuery(`SELECT login FROM profiles WHERE cookieId = \'${cookieId}\';`);
+    console.log("Creator value: ", creator);
+    res.send(JSON.stringify({
+        creator   : creator[0].login,
+        message   : req.body.message,
+        id : mesId[0].id,
+        createdat : date 
+    }));
+    res.end();
 
+});
 
 app.put('/rejectOrAcceptInvite', async (req, res) => {
-    let cookieId = req.cookies.ID;
-    /* let reqTargetIdByLogin = new Promise ((resolve, reject) => {
-        let sql_TargetIdByLogin = `SELECT cookieId AS cookieId FROM profiles WHERE login=\'${req.body.login}\';`;
-        db.query(sql_TargetIdByLogin, (err, result) => {
-            if(err) throw err;
-            resolve(result[0].cookieId);
-        })
-    });
-    let targetId = await reqTargetIdByLogin.then((result)=>{return result});
-    if(req.body.answer === 'reject') {
-        let sql_delFriendship = `DELETE FROM friendship WHERE (sourceId = \'${cookieId}\' AND targetId = \'${targetId}\') OR (sourceId = \'${targetId}\' AND targetId = \'${cookieId}\');`;
-        //let sql_setFriendshipStat = 'UPDATE friendship SET status=\'aparted\' WHERE (sourceId = \'${cookieId}\' AND targetId = \'${req.body.target}\') OR (sourceId = \'${req.body.target}\' AND targetId = \'${cookieId}\');`; 
-        db.query(sql_delFriendship, (err)=>{
-            if(err) throw err;
-            console.log('friendship was deleted...');
-            res.end();
-        });
-    }
-    if(req.body.answer === 'accept') {
-        let sql_friendshipAccept = `UPDATE friendship SET status=\'active\' WHERE (sourceId = \'${cookieId}\' AND targetId = \'${targetId}\') OR (sourceId = \'${targetId}\' AND targetId = \'${cookieId}\');`;
-        db.query(sql_friendshipAccept, (err) => {
-            if(err) throw err;
-            console.log('Friendship was accepted...');
-            res.end();
-        })
-    }*/
+    let cookieId = await useridFromAccessToken(req);
 
     //with db manager
-    let rawReqTargetIdByLogin = await db.readRow('profiles', 'cookieId', `login=\'${req.body.login}\'`);
-    let targetId = rawReqTargetIdByLogin[0].cookieId;
+    let rawReqTargetIdByLogin = await db.readRows('profiles', 'cookieId', `login=\'${req.body.login}\'`);
+    let targetId = rawReqTargetIdByLogin[0].cookieid;
     if(req.body.answer === 'reject') {
-        db.deleteRow('friendship', `(sourceId = \'${cookieId}\' AND targetId = \'${targetId}\') OR (sourceId = \'${targetId}\' AND targetId = \'${cookieId}\')`);
+        db.deleteRows('friendship', `(sourceId = \'${cookieId}\' AND targetId = \'${targetId}\') OR (sourceId = \'${targetId}\' AND targetId = \'${cookieId}\')`);
         console.log('friendship was deleted...');
         res.end();
     }
     if(req.body.answer === 'accept') {
-        db.updateRow('friendship', 'status', '\'active\'', `(sourceId = \'${cookieId}\' AND targetId = \'${targetId}\') OR (sourceId = \'${targetId}\' AND targetId = \'${cookieId}\')`);
+        db.updateRows('friendship', 'status', '\'active\'', `(sourceId = \'${cookieId}\' AND targetId = \'${targetId}\') OR (sourceId = \'${targetId}\' AND targetId = \'${cookieId}\')`);
         console.log('Friendship was accepted...');
         res.end();
     }
 
 });
 app.delete('/deleteFriend', async (req, res) => {
-    /* let reqTargetIdByLogin = new Promise ((resolve, reject) => {
-        let sql_TargetIdByLogin = `SELECT cookieId AS cookieId FROM profiles WHERE login=\'${req.body.login}\';`;
-        db.query(sql_TargetIdByLogin, (err, result) => {
-            if(err) throw err;
-            resolve(result[0].cookieId);
-        })
-    });
-    let targetId = await reqTargetIdByLogin.then((result)=>{return result}); */
-    let rawReqTargetIdByLogin = await db.readRow('profiles', 'cookieId', `login=\'${req.body.login}\'`);
-    let targetId = rawReqTargetIdByLogin[0].cookieId;
-    let cookieId = req.cookies.ID;
-    /* let sql_delFriendship = `DELETE FROM friendship WHERE (sourceId = \'${cookieId}\' AND targetId = \'${targetId}\') OR (sourceId = \'${targetId}\' AND targetId = \'${cookieId}\');`;
-    //let sql_setFriendshipStat = 'UPDATE friendship SET status=\'aparted\' WHERE (sourceId = \'${cookieId}\' AND targetId = \'${req.body.target}\') OR (sourceId = \'${req.body.target}\' AND targetId = \'${cookieId}\');`; 
-    db.query(sql_delFriendship, (err)=>{
-        if(err) throw err;
-        console.log('friendship deleted');
-        res.end();
-    }) */
-    await db.deleteRow('friendship', `(sourceId = \'${cookieId}\' AND targetId = \'${targetId}\') OR (sourceId = \'${targetId}\' AND targetId = \'${cookieId}\')`);
+    console.log('app.delete /deteteFriend : req.body.login : ', req.body.login);
+    let rawReqTargetIdByLogin = await db.readRows('profiles', 'cookieId', `login=\'${req.body.login}\'`);
+    let targetId = rawReqTargetIdByLogin[0].cookieid;
+    let cookieId = await useridFromAccessToken(req);
+    await db.deleteRows('friendship', `(sourceId = \'${cookieId}\' AND targetId = \'${targetId}\') OR (sourceId = \'${targetId}\' AND targetId = \'${cookieId}\')`);
     console.log('friendship deleted');
     res.end();
 });
+app.delete("/prvtchtDeleteMessage", async (req, res) => {
+    console.log('app.delete /prvtchtDeleteMessage : ', req.body.id);
+    db.deleteRows('privatechat', `id = ${req.body.id}`);
+});
 
+app.put('/prvtchtRedactMessage', async (req, res) => {
+    db.updateRows('privatechat', 'message', `\'${req.body.text}\'`, `id = \'${req.body.id}\'`);
+});
+
+
+let prvtChtConnectedUsers = {};
+async function idByAccessTokenForSocket (accessToken) {
+    let payload = JSON.parse(Buffer.from(accessToken.split(' ')[1].split('.')[1], 'base64url').toString('utf8'));
+    return payload;
+}
+privateChatSocket.on('connection', async (socket) => {
+    
+    let cookies = cookie.parse(socket.handshake.headers.cookie);
+    let userCookie = await idByAccessTokenForSocket (cookies.Authorization);
+    let userLogin = await db.readRows('profiles', 'login', `cookieId = \'${userCookie.ID}\'`);
+    prvtChtConnectedUsers[userLogin[0].login] = socket.id;
+    console.log("Full prvtChtConnectedUsers on connect : ", prvtChtConnectedUsers);
+
+    console.log('User connected to private chat!');
+    socket.on('messageSent', async function(res) {
+        if(prvtChtConnectedUsers[res.receiver]) privateChatSocket.to(prvtChtConnectedUsers[res.receiver]).emit('messageReceived', res);
+    });
+    socket.on('friendshipInvited', async function (res) {
+        if(prvtChtConnectedUsers[res.receiver]) {
+            let Uscookies = cookie.parse(socket.handshake.headers.cookie);
+            let cookieId = await idByAccessTokenForSocket(Uscookies.Authorization);
+            let userData = await db.readRows('profiles', 'login, email', `cookieId = \'${cookieId.ID}\'`);
+            privateChatSocket.to(prvtChtConnectedUsers[res.receiver]).emit('newInvite', userData[0]);
+        }
+    });
+    socket.on('friendshipAccepted', async function (res) {
+        if(prvtChtConnectedUsers[res.receiver]) {
+            let Uscookies = cookie.parse(socket.handshake.headers.cookie);
+            let cookieId = await idByAccessTokenForSocket(Uscookies.Authorization);            
+            let userData = await db.readRows('profiles', 'login, email', `cookieId = \'${cookieId.ID}\'`);
+            privateChatSocket.to(prvtChtConnectedUsers[res.receiver]).emit('newFriend', userData[0]);
+        }
+    });
+    socket.on('friendshipStopped', async function (res) {
+        if(prvtChtConnectedUsers[res.receiver]) {
+            let Uscookies = cookie.parse(socket.handshake.headers.cookie);
+            let cookieId = await idByAccessTokenForSocket(Uscookies.Authorization);
+            let userData = await db.readRows('profiles', 'login', `cookieId = \'${cookieId.ID}\'`);
+            console.log('privatechat socket.on(friendshipStopped) userData[0] : ', userData[0]);
+            privateChatSocket.to(prvtChtConnectedUsers[res.receiver]).emit(`${userData[0].login}-delete`);
+        }
+    });
+    socket.on('messageRedacted', async function (res) {
+        if(prvtChtConnectedUsers[res.receiver]) privateChatSocket.to(prvtChtConnectedUsers[res.receiver]).emit(`${res.id}-mesRedacted`, res);
+    });
+    socket.on('messageDeleted', async function (res) {
+        if(prvtChtConnectedUsers[res.receiver]) privateChatSocket.to(prvtChtConnectedUsers[res.receiver]).emit(`${res.id}-mesDeleted`);
+    });
+    socket.on('disconnect', () => {
+        console.log("disconnect: socket.id : ", socket.id);
+        console.log("disconnect: prvtChtConnectedUsers[userLogin] : ", prvtChtConnectedUsers[userLogin]);
+        for(let key in prvtChtConnectedUsers) {
+            if(prvtChtConnectedUsers[key] == socket.id) {
+                console.log(`socket.on:disconnect : prvtChtConnectedUsers[${key}] : ${prvtChtConnectedUsers[key]} deleting...`);
+                delete prvtChtConnectedUsers[key];
+            }
+        }
+    })
+});
+
+publicChatSocket.on('connection', (socket) => {
+    console.log('User connected to public chat!');
+    socket.on('messageSent', async function(res) {
+        socket.broadcast.emit('messageReceived', res);
+    });
+});
 
 console.log(hello);
 
@@ -511,6 +664,6 @@ console.log(hello);
 //PORT number
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+http.listen(PORT, () => {
     console.log(`Server started on port ${PORT}`);
 });

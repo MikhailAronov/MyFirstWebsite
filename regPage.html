@@ -5,38 +5,57 @@
         <link rel="shortcut icon" href="/resources/images/sword_icon.png">
         <link rel="stylesheet" href="stylesheet.css">
     </head>
-    <body>
+    <body><header id="siteNavigation">
         <h1 id="siteTitle">AnonPF2E_Chat</h1>
-        <section id="RegModule">
-            
-            <form id="newRegUser" method="POST" action="/regPage.html" enctype="multipart/form-data" name="myForm">
-                <div id="regModContent ">
-                <h2 id="testSettingUp">Registration</h2>
-                <div class="oneRegInput">
-                    <label class="regLabel" for="login">Login:</label>
-                    <input type="text" id="loginUpload" name="login">
-                </div>
-                <div class="oneRegInput">
-                    <label class="regLabel" for="password">Password:</label>
-                    <input type="text" id="passwordUpload" name="password">
-                </div>
-                <div class="oneRegInput" id="testElement">
-                    <label class="regLabel" for="repPassword">Repeat password:</label>
-                    <p id="passwordDoesntMatch"></p>
-                    <input type="text" id="repPassword">
-                </div>
-                <div class="oneRegInput">
-                    <label class="regLabel" for="email">Email:</label>
-                    <input type="email" id="emailUpload" name="email">
-                </div>
-                <div class="oneRegInput">
-                    <label class="regLabel" for="profilePicUpload">Upload Profile Pic:</label>
-                    <input type="file" id="profilePicInput" accept="image/*" name="profilePic">
-                </div>
-                </div>
-                <input class="btn" type="submit" value="Отправить" id="submitButton">
-            </form>
-        </section>
+    </header>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+        <div id="regnlog">
+            <section id="LogModule">
+                <div class="RegOrLogForm" id="LoggingFields">
+                    <h2>Log in</h2>
+                    <div class="oneRegInput">
+                        <label class="regLabel" for="login" >Login or email:</label>
+                        <input type="text" id="loginToLog" name="login">
+                    </div>
+                    <div class="oneRegInput">
+                        <label class="regLabel" for="password" >Password:</label>
+                        <input type="text" id="passwordToLog" name="password">
+                    </div>
+                    <button class="btn" id="loginButton">Send</button>
+                    <p>Have no account? Than <a href="" id="switchToRegModule">sign in</a>!</p>
+                    </div>
+            </section>
+            <section id="RegModule">
+                <form class="RegOrLogForm" id="newRegUser" method="POST" action="/regPage.html" enctype="multipart/form-data" name="myForm">
+                    <div id="regModContent ">
+                    <h2 id="testSettingUp">Registration</h2>
+                    <div class="oneRegInput">
+                        <label class="regLabel" for="login">Login:</label>
+                        <input type="text" id="loginUpload" name="login">
+                    </div>
+                    <div class="oneRegInput">
+                        <label class="regLabel" for="password">Password:</label>
+                        <input type="text" id="passwordUpload" name="password">
+                    </div>
+                    <div class="oneRegInput" id="testElement">
+                        <label class="regLabel" for="repPassword">Repeat password:</label>
+                        <p id="passwordDoesntMatch"></p>
+                        <input type="text" id="repPassword">
+                    </div>
+                    <div class="oneRegInput">
+                        <label class="regLabel" for="email">Email:</label>
+                        <input type="email" id="emailUpload" name="email">
+                    </div>
+                    <div class="oneRegInput">
+                        <label class="regLabel" for="profilePicUpload">Upload Profile Pic:</label>
+                        <input type="file" id="profilePicInput" accept="image/*" name="profilePic">
+                    </div>
+                    </div>
+                    <input class="btn" type="submit" value="Отправить" id="submitButton">
+                    <p>Already have an account? Than <a href="" id="switchToRegModule">log in</a>!</p>
+                </form>
+            </section>
+        </div>
         <script src="/regPageScript.js"></script>
     </body>
 </html>
